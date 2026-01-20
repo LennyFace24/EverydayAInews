@@ -13,30 +13,46 @@ export const helloWorld = inngest.createFunction(
 export const sendDailyNews = inngest.createFunction(
   { id: "send-daily-news" },
 //   { event: "test/send.daily.news" },
-    // 定义cron 每天北京时间早上8点发送
-    {cron: "0 9 * * *", timezone: "Asia/Shanghai"},
+    {cron: "34 7 * * *"},
     async ({ event, step }) => {
     
         // 从多个rss源获取新闻
-        const newItems = await step.run("fetch-news", async () => {
+        const allItems = await step.run("fetch-news", async () => {
           const { fetchMultipleRSS, RSS_FEEDS } = await import("../lib/rss_utils");
           return await fetchMultipleRSS(RSS_FEEDS.tech);
         });
-        // 整理为每日摘要
-        const dailySummary = await step.run("create-summary", async () => {
-          let summary = "Today's Tech News:\n\n";
-          summary += newItems.slice(0, 5).map(item => `- ${item.title}`).join("\n");
-          return summary;
+        
+        // 过滤出最近24小时内的新闻，避免重复发送
+        const recentItems = await step.run("filter-recent-news", async () => {
+          const { filterRecentNews } = await import("../lib/rss_utils");
+          const filtered = filterRecentNews(allItems, 24);
+          
+          // 如果过滤后的新闻少于5条，扩大到36小时范围
+          if (filtered.length < 5) {
+            console.log(`Only ${filtered.length} news in 24h, expanding to 36h`);
+            return filterRecentNews(allItems, 36);
+          }
+          
+          return filtered;
+        });
+        
+        // 整理为每日摘要（取前10条）
+        const htmlContent = await step.run("create-summary", async () => {
+          const { generateEmailHTML } = await import("../lib/rss_utils");
+          const newsToSend = recentItems.slice(0, 10);
+          
+          console.log(`Sending ${newsToSend.length} news items`);
+          return generateEmailHTML(newsToSend);
         });
         
         // 创建邮件
         const resend = new Resend(process.env.RESEND_API_KEY as string);
         const {data,error} = await step.run("create-email", async () => {
           const result = await resend.broadcasts.create({
-            subject: "Your Daily News!",
+            subject: "这是今日份的Tech News - " + new Date().toLocaleDateString('zh-CN'),
             segmentId: process.env.RESEND_SEGMENT_ID as string,
             from: "LennyFace <lennyface@itzlennyface.shop>",
-            html: `<h1>Your Daily Tech News</h1><pre>${dailySummary}</pre>`,
+            html: htmlContent,
           });
           return result;
         });

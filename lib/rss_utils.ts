@@ -164,6 +164,104 @@ export function filterByCategory(items: RSSItem[], category: string): RSSItem[] 
   );
 }
 
+/**
+ * 过滤出最近指定小时数内发布的新闻
+ * @param items - 新闻列表
+ * @param hours - 时间范围（小时），默认24小时
+ */
+export function filterRecentNews(items: RSSItem[], hours: number = 24): RSSItem[] {
+  const now = new Date().getTime();
+  const timeRange = hours * 60 * 60 * 1000; // 转换为毫秒
+  
+  return items.filter(item => {
+    try {
+      const itemDate = new Date(item.pubDate).getTime();
+      const timeDiff = now - itemDate;
+      
+      // 只保留指定时间范围内的新闻
+      return timeDiff >= 0 && timeDiff <= timeRange;
+    } catch (error) {
+      // 如果日期解析失败，保留该项（可能是无效日期格式）
+      console.warn(`Invalid date format for item: ${item.title}`);
+      return false;
+    }
+  });
+}
+
+/**
+ * 生成格式化的邮件HTML内容
+ */
+export function generateEmailHTML(items: RSSItem[]): string {
+  const today = new Date().toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  
+  const newsItems = items
+    .map((item, index) => {
+      const description = item.description.substring(0, 200) || '(无摘要)';
+      const link = item.link ? `<a href="${item.link}" style="color: #2563eb; text-decoration: none;">阅读全文 →</a>` : '';
+      return `
+        <div style="border-left: 4px solid #3b82f6; padding-left: 16px; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #e5e7eb;">
+          <h3 style="margin: 0 0 8px 0; font-size: 18px; color: #1f2937;">
+            <span style="color: #3b82f6; font-weight: bold;">${index + 1}.</span> ${item.title}
+          </h3>
+          <p style="margin: 8px 0 12px 0; color: #6b7280; font-size: 13px;">
+            📅 ${new Date(item.pubDate).toLocaleDateString('zh-CN')}
+            ${item.category ? ` | 📂 ${item.category}` : ''}
+          </p>
+          <p style="margin: 12px 0; color: #374151; line-height: 1.6; font-size: 14px;">
+            ${description}...
+          </p>
+          <div>${link}</div>
+        </div>
+      `;
+    })
+    .join('');
+  
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; padding: 0; margin: 0;">
+        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); overflow: hidden;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 32px 24px; text-align: center;">
+            <h1 style="margin: 0; font-size: 28px; color: #ffffff; font-weight: bold;">
+              📰 每日科技新闻摘要
+            </h1>
+            <p style="margin: 12px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 14px;">
+              ${today}
+            </p>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 32px 24px;">
+            <p style="margin: 0 0 24px 0; color: #6b7280; font-size: 14px;">
+              👋 Hi，这是今天的技术新闻精选，共 ${items.length} 条热点资讯
+            </p>
+            
+            <div>
+              ${newsItems}
+            </div>
+          </div>
+          
+          <!-- Footer -->
+          <div style="background-color: #f3f4f6; border-top: 1px solid #e5e7eb; padding: 24px; text-align: center;">
+            <p style="margin: 8px 0 0 0; color: #9ca3af; font-size: 11px;">
+              © 2026 LennyFace Daily News. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 // 常用 RSS 源示例
 export const RSS_FEEDS = {
   ai: [
